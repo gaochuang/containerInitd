@@ -1,12 +1,12 @@
 CXX = g++
 CXXFLAGS = -Wall -Wextra -pthread -O2 -fPIC -std=c++17
-INCLUDES = -Iinclude/private -Iinclude/comapi -I/usr/include
+INCLUDES = -Iinclude/private -Iinclude/comapi -I/usr/include -Iinclude
 LDFLAGS = -lpthread  -lboost_filesystem -lboost_iostreams -lboost_system
 
 PREFIX ?= /usr/local
 BINARYNAME = containerInitd
 
-SRCS = $(wildcard src/*.cpp)
+SRCS = $(wildcard src/daemon/*.cpp)
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(BINARYNAME)
