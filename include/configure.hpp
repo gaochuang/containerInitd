@@ -16,7 +16,7 @@ namespace containerInitd
             std::string loggerDevice;
             bool loggerForward;
             int loggerLevel;
-       };
+       }Logger;
     };
 }
 
