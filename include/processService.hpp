@@ -62,6 +62,12 @@ public:
 
 };
 
+std::istream& operator>>(std::istream& is, ProcessService::Type& type);
+
+std::istream& operator>>(std::istream& is, ProcessService::FailureAction& action);
+
+std::istream& operator>>(std::istream& is, ProcessService::LoggerOut& out);
+
 }
 
 #endif
