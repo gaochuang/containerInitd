@@ -36,6 +36,7 @@ void Environment::unset(const std::string& name)
 {
     map.erase(name);
 }
+
 std::vector<std::string> Environment::get() const
 {
     std::vector<std::string> ret;
