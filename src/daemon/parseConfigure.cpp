@@ -5,6 +5,8 @@
 #include <fstream>
 #include <system_error>
 #include <chrono>
+#include <syslog.h>
+#include <algorithm>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -69,7 +71,7 @@ std::vector<T> getVector(const boost::property_tree::ptree& ptree, const boost::
 }
 
 template <typename T>
-boost::optional<T> getVectorOptional(const boost::property_tree::ptree& ptree, const boost::property_tree::ptree::key_type& key)
+std::vector<T> getVectorOptional(const boost::property_tree::ptree& ptree, const boost::property_tree::ptree::key_type& key)
 {
     try
     {
@@ -123,9 +125,38 @@ T getOptionalWithDefaultValue(const boost::property_tree::ptree& ptree, const st
     return defaultValue;
 }
 
+void addEnvironment(const boost::property_tree::ptree& tree, Environment& env)
+{
+    for(auto & i : tree.get_child(""))
+    {
+        env.set(get<std::string>(i.second, "name"), get<std::string>(i.second, "value"));
+    }
 }
 
-void addProcessService(const Configure& cnf, const Environment& env, const boost::property_tree::ptree& tree)
+ProcessService::Heartbeat getHeartbeat(const boost::property_tree::ptree& tree)
+{
+    ProcessService::Heartbeat heartbeart;
+    heartbeart.interval = get<std::chrono::steady_clock::duration>(tree, "interval");
+    heartbeart.failureThreshold = get<int>(tree, "failureThreshold");
+
+    if(heartbeart.failureThreshold <= 0)
+    {
+        throw "threshold must be > 0 \n";
+    }
+
+    return heartbeart;
+}
+
+void setLogger(Configure& cnf, boost::property_tree::ptree& tree)
+{
+    cnf.Logger.loggerForward = true;
+    cnf.Logger.loggerLevel = getOptionalWithDefaultValue<int>(tree, "logLevel", LOG_ERR);
+    cnf.Logger.loggerDevice = getOptionalWithDefaultValue<std::string>(tree, "deviceName", "/dev/log");
+}
+
+}
+
+void addProcessService(Configure& cnf, const Environment& env, const boost::property_tree::ptree& tree)
 {
     ProcessService svc;
 
@@ -133,19 +164,20 @@ void addProcessService(const Configure& cnf, const Environment& env, const boost
     svc.argv = getVector<std::string>(tree, "argv");
     if(svc.argv.empty())
     {
-        throw "argv is empty, should not be empty.";
+        throw "argv is empty, should not be empty.\n";
     }
 
     svc.type = getOptionalWithDefaultValue<ProcessService::Type>(tree, "type", ProcessService::Type::BASIC);
     svc.action = getOptionalWithDefaultValue<ProcessService::FailureAction>(tree, "faileAction", ProcessService::FailureAction::RESTART);
     svc.standardErr = getOptionalWithDefaultValue<ProcessService::LoggerOut>(tree, "standErr", ProcessService::LoggerOut::INIT_PROCESS);
     svc.standardOut = getOptionalWithDefaultValue<ProcessService::LoggerOut>(tree, "standOut", ProcessService::LoggerOut::INIT_PROCESS);
-   auto timeout = getOptional<std::chrono::steady_clock::duration>(tree, "startTimeout");
+
+    auto timeout = getOptional<std::chrono::steady_clock::duration>(tree, "startTimeout");
     if(timeout)
     {
         if(svc.type == ProcessService::Type::BASIC)
         {
-            throw "process is basic, don't need start timeout";
+            throw "process is basic, don't need start timeout \n";
             svc.startTimeout = *timeout;
         }
     }else
@@ -154,9 +186,31 @@ void addProcessService(const Configure& cnf, const Environment& env, const boost
     }
 
     svc.stopTimeout = getOptionalWithDefaultValue<std::chrono::steady_clock::duration>(tree, "stopTimeout", std::chrono::seconds(200));
+
+    Environment environment;
+    environment = env;
+
+    for(const auto& i : tree.get_child(""))
+    {
+        if(i.first == "addEnv")
+        {
+            addEnvironment(i.second, environment);
+        }else
+        {
+            if(i.first == "heartbeat")
+            {
+                svc.heartbeat = getHeartbeat(i.second);
+            }
+        }
+    }
+
+    svc.startAfter = getVectorOptional<std::string>(tree, "startAfter");
+
+
+    cnf.servicesMap.insert(std::make_pair(svc.name, svc));
 }
 
-void readConfigurationImpl(const std::string& path, Configure& conf, std::istream& is)
+void readConfigurationImpl(Configure& conf, std::istream& is)
 {
     Environment env;
 
@@ -173,11 +227,14 @@ void readConfigurationImpl(const std::string& path, Configure& conf, std::istrea
         if ("prcessService" == i.first)
         {
             addProcessService(conf, env, ptree);
+        }else if("logger" == i.first)
+        {
+            setLogger(conf, ptree);
         }
     }
 }
 
-Configure parseConfigure(const std::string path)
+Configure containerInitd::parseConfigure(const std::string path)
 {
     Configure conf;
 
@@ -188,13 +245,16 @@ Configure parseConfigure(const std::string path)
         throw std::system_error(errno, std::system_category(), path);
     }
 
-    readConfigurationImpl(path, conf, file);
+    readConfigurationImpl( conf, file);
 
     return conf;
 
 }
 
-Configure parseConfigure(std::istream& is)
+Configure containerInitd::parseConfigure(std::istream& is)
 {
+    Configure conf;
+    readConfigurationImpl(conf, is);
 
+    return conf;
 }
