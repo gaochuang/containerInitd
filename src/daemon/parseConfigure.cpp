@@ -35,7 +35,6 @@ T get(const boost::property_tree::ptree& ptree, const std::string& parameter)
         os << "invalid: " << parameter << "data type: " << e.data<boost::property_tree::ptree::data_type>() << std::endl;
         throw (os.str());
     }
-
     catch(const boost::property_tree::ptree_bad_path& e)
     {
         std::ostringstream os;
@@ -147,7 +146,7 @@ ProcessService::Heartbeat getHeartbeat(const boost::property_tree::ptree& tree)
     return heartbeart;
 }
 
-void setLogger(Configure& cnf, boost::property_tree::ptree& tree)
+void setLogger(Configure& cnf, const boost::property_tree::ptree& tree)
 {
     cnf.Logger.loggerForward = true;
     cnf.Logger.loggerLevel = getOptionalWithDefaultValue<int>(tree, "logLevel", LOG_ERR);
@@ -159,7 +158,6 @@ void setLogger(Configure& cnf, boost::property_tree::ptree& tree)
 void addProcessService(Configure& cnf, const Environment& env, const boost::property_tree::ptree& tree)
 {
     ProcessService svc;
-
     svc.name = get<std::string>(tree, "name");
     svc.argv = getVector<std::string>(tree, "argv");
     if(svc.argv.empty())
@@ -168,7 +166,7 @@ void addProcessService(Configure& cnf, const Environment& env, const boost::prop
     }
 
     svc.type = getOptionalWithDefaultValue<ProcessService::Type>(tree, "type", ProcessService::Type::BASIC);
-    svc.action = getOptionalWithDefaultValue<ProcessService::FailureAction>(tree, "faileAction", ProcessService::FailureAction::RESTART);
+    svc.action = getOptionalWithDefaultValue<ProcessService::FailureAction>(tree, "failAction", ProcessService::FailureAction::RESTART);
     svc.standardErr = getOptionalWithDefaultValue<ProcessService::LoggerOut>(tree, "standErr", ProcessService::LoggerOut::INIT_PROCESS);
     svc.standardOut = getOptionalWithDefaultValue<ProcessService::LoggerOut>(tree, "standOut", ProcessService::LoggerOut::INIT_PROCESS);
 
@@ -224,12 +222,12 @@ void readConfigurationImpl(Configure& conf, std::istream& is)
 
     for(const auto& i : ptree.get_child(""))
     {
-        if ("prcessService" == i.first)
+        if ("processService" == i.first)
         {
-            addProcessService(conf, env, ptree);
+            addProcessService(conf, env, i.second);
         }else if("logger" == i.first)
         {
-            setLogger(conf, ptree);
+            setLogger(conf, i.second);
         }
     }
 }
@@ -245,7 +243,7 @@ Configure containerInitd::parseConfigure(const std::string path)
         throw std::system_error(errno, std::system_category(), path);
     }
 
-    readConfigurationImpl( conf, file);
+    readConfigurationImpl(conf, file);
 
     return conf;
 
