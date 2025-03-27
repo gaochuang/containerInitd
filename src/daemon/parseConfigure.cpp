@@ -7,6 +7,8 @@
 #include <chrono>
 #include <syslog.h>
 #include <algorithm>
+#include <filesystem>
+#include <iostream>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -235,24 +237,63 @@ void readConfigurationImpl(Configure& conf, std::istream& is)
 Configure containerInitd::parseConfigure(const std::string path)
 {
     Configure conf;
-
     std::ifstream file(path);
-
     if(!file)
     {
         throw std::system_error(errno, std::system_category(), path);
     }
-
     readConfigurationImpl(conf, file);
-
     return conf;
-
 }
 
 Configure containerInitd::parseConfigure(std::istream& is)
 {
     Configure conf;
     readConfigurationImpl(conf, is);
+
+    return conf;
+}
+
+std::vector<std::string> getJsonFilesFromDirectory(const std::string& path)
+{
+    std::vector<std::string> files;
+    try
+    {
+        if(std::filesystem::exists(path) && std::filesystem::is_directory(path))
+        {
+            for(auto const & entry : std::filesystem::directory_iterator(path))
+            {
+                if(entry.is_regular_file() && entry.path().extension() == ".json")
+                {
+                    files.push_back(entry.path().string());
+                }
+            }
+
+            std::sort(files.begin(), files.end());
+        }
+    }catch(const std::exception& e)
+    {
+        std::cerr << "error: " << e.what() << std::endl;
+    }
+
+    return files;
+}
+
+Configure containerInitd::parseConfigureFromDirectory(const std::string& path)
+{
+    Configure conf;
+    const auto& files = getJsonFilesFromDirectory(path);
+    for(const auto & i : files)
+    {
+        std::cout << "json file name: " << i << std::endl;
+        std::ifstream file(i);
+        if(!file)
+        {
+            throw std::system_error(errno, std::system_category(), path);
+        }
+
+        readConfigurationImpl(conf, file);
+    }
 
     return conf;
 }
