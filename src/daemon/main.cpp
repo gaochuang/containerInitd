@@ -11,4 +11,3 @@ int main()
     auto cnf =  parseConfigureFromDirectory(configFilesDirectory);
     return 0;
 }
-
