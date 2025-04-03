@@ -18,6 +18,7 @@ namespace containerInitd
     };
 
     ServiceDependencyGraph createServiceDependencyGraph(const Configure& configure);
+
 }
 
 #endif
