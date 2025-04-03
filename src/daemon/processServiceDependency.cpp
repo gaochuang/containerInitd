@@ -5,10 +5,10 @@
 #include <vector>
 #include <set>
 #include <iostream>
+#include <algorithm>
 #include <sstream>
 
 using namespace containerInitd;
-
 
 void checkAllProcessServiceExist(const std::set<std::string>& startServiceSet, const std::set<std::string>&dependServiceSet,
                                  const std::unordered_map<std::string,  std::vector<std::string>>& dependServiceMap)
@@ -92,6 +92,42 @@ void checkCircularDependencyProcesService(const std::unordered_map<std::string, 
     }
 }
 
+void createStartupDenpendency(const Configure& configure, ServiceMap& nameAndServiceMap)
+{
+    for(const auto& i : configure.servicesMap)
+    {
+        const ProcessService& svc = i.second;
+        if(!svc.startAfter.empty())
+        {
+            nameAndServiceMap.insert(std::make_pair(svc.name, svc.startAfter));
+        }
+    }
+}
+
+void createTerminalDependency(const Configure& configure, ServiceMap& nameAndServiceMap)
+{
+    for(const auto& i : configure.servicesMap)
+    {
+        const ProcessService& svc = i.second;
+        for(const auto& name : svc.startAfter)
+        {
+            auto stopList = nameAndServiceMap.find(name);
+            if(nameAndServiceMap.end() == stopList)
+            {
+                std::vector<std::string> stopAfter{svc.name};
+                nameAndServiceMap.insert(std::make_pair(name, stopAfter));
+            }else
+            {
+                std::vector<std::string>& vec = stopList->second;
+                if(std::find(vec.begin(), vec.end(), svc.name) == vec.end())
+                {
+                    vec.push_back(svc.name);
+                }
+            }
+        }
+    }
+}
+
 void checkProcessServiceIsValid(const Configure& configure)
 {
     std::unordered_map<std::string, std::vector<std::string>> startServiceMap;
@@ -117,7 +153,7 @@ void checkProcessServiceIsValid(const Configure& configure)
         for(auto const &i : svc.startAfter)
         {
             //服务启动依赖自身
-            //{'E', ['E', 'F', 'G','H']}
+            //{'E', ['E', 'F', 'G','H']}        `
             if(i == svc.name)
             {
                 std::ostringstream os;
@@ -147,11 +183,13 @@ void checkProcessServiceIsValid(const Configure& configure)
     checkCircularDependencyProcesService(dependServiceMap);
 }
 
-ServiceDependencyGraph createServiceDependencyGraph(const Configure& configure)
+ServiceDependencyGraph containerInitd::createServiceDependencyGraph(const Configure& configure)
 {
     checkProcessServiceIsValid(configure);
 
     ServiceDependencyGraph denpendency;
+
+    createStartupDenpendency(configure, denpendency.startupMap);
 
     return denpendency;
 }
