@@ -69,6 +69,7 @@ private:
    void sendHeartBeatRequestMessage();
    void startWatchdog();
    void watchdogTimeoutHandle(const boost::system::error_code& ec);
+   void stopTimeoutHandler(const boost::system::error_code& ec);
 };
 
 }

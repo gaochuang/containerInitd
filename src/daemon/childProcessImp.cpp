@@ -1,7 +1,10 @@
 #include "childProcessImp.hpp"
 #include "forkProcesAndExec.hpp"
+#include "loggerPrefixBuilder.hpp"
+#include "processExitStatus.hpp"
 
 #include <iostream>
+#include <sys/wait.h>
 
 using namespace containerInitd;
 
@@ -74,12 +77,52 @@ ProcessChildImp::ProcessChildImp(boost::asio::io_context& ioc, const ProcessServ
             {
                 startWatchdog();
             }
+        }else
+        {
+            pid = forkProcessAndExec(childOutputFd, childOutErrFd, service.argv, service.env, service.uidAndGid);
         }
 
     }
 
+    auto prefixStr = loggerPrefixBulder(service.outputPrefix, pid);
+
+    if(outputForwarder)
+    {
+        outputForwarder->closeChildFd();
+        outputForwarder->setLogPrefix(prefixStr);
+    }
+
+    if(errputForwarder)
+    {
+        errputForwarder->closeChildFd();
+        errputForwarder->setLogPrefix(prefixStr);
+    }
+
     setProcessState(state);
-    
+
+    std::cout << "name: " << name << "started with pid " << pid << std::endl;
+
+}
+
+ProcessChildImp::~ProcessChildImp()
+{
+    heartbeatTimer.reset();
+    watchdogTimer.reset();
+    startTimer.reset();
+    stopTimer.reset();
+    if(0 != pid)
+    {
+        //杀死整个进程组中的进程,ESRCH 进程或进程组不存在（可能已经提前退出
+        if((-1 == kill(-pid, SIGKILL)) && (errno != ESRCH))
+        {
+            std::cerr << "kill " << -pid << " process failed " << strerror(errno) << std::endl;
+        }else
+        {
+            std::cout << "kill " << -pid << " process successful" << std::endl;
+        }
+
+        waitpid(pid, nullptr, 0);
+    }
 }
 
 void ProcessChildImp::startTimeoutHandler(const boost::system::error_code& ec)
@@ -93,10 +136,6 @@ void ProcessChildImp::startTimeoutHandler(const boost::system::error_code& ec)
 
 }
 
-ProcessChildImp::~ProcessChildImp()
-{
-
-}
 
 void ProcessChildImp::handleRead(const boost::system::error_code& ec)
 {
@@ -122,17 +161,78 @@ pid_t ProcessChildImp::getProcessPid() const
 
 void ProcessChildImp::processTerminated(int exitStatus)
 {
+    heartbeatTimer.reset();
+    startTimer.reset();
+    stopTimer.reset();
+    watchdogTimer.reset();
 
+    auto pidCopy = pid;
+    pid = 0;
+    if((-1 == kill(-pidCopy, SIGKILL)) && (errno != ESRCH))
+    {
+        throw std::system_error(errno, std::system_category(), "kill");
+    }
+
+    if(outputForwarder)
+    {
+        outputForwarder->readRemaining();
+    }
+
+    if(errputForwarder)
+    {
+        errputForwarder->readRemaining();
+    }
+
+    auto sig = savedTerminationSignal;
+    if(sig < 0)
+    {
+        sig = SIGTERM;
+    }
+
+    if((state == ProcessState::TERMINATING) && isSuccessExit(exitStatus, sig))
+    {
+        std::cout << name << " pid: " << pidCopy << "terminated successfully " << std::endl;
+        setProcessState(ProcessState::EXPECTDEAD);
+    }else
+    {
+        std::cerr << "detected unexpected  " << name << " terminalter , pid " << pidCopy
+             << " terminated with " << getProcessExitDescription(exitStatus) << std::endl;
+    }
 }
 
 void ProcessChildImp::startTerminating()
 {
-
+    startTerminating(SIGTERM);
 }
 
 void ProcessChildImp::startTerminating(int sig)
 {
+    startTimer.reset();
 
+    std::cout << "terminating " << name << " pid " << pid << std::endl;
+    kill(pid, sig);
+
+    stopTimer  = std::make_shared<SteadyTimer>(ioc);
+    stopTimer->expires_from_now(stopTimeout);
+    setProcessState(ProcessState::TERMINATING);
+
+    stopTimer->async_wait([this](const boost::system::error_code& ec){
+        this->stopTimeoutHandler(ec);
+    });
+
+}
+
+void ProcessChildImp::stopTimeoutHandler(const boost::system::error_code& ec)
+{
+    if(ec)
+    {
+        return;
+    }
+
+    std::cerr << "name: "  << name << " pid: " << pid << " terminating timeout, will kill by SIGKILL " << std::endl;
+
+    kill(pid, SIGKILL);
+    setProcessState(ProcessState::KILLING);
 }
 
 void ProcessChildImp::setProcessState(ProcessState state)
