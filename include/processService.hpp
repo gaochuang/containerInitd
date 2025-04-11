@@ -1,6 +1,8 @@
 #ifndef PROCESS_SERICE_HPP
 #define PROCESS_SERICE_HPP
 
+#include "uidAndGid.hpp"
+
 #include <string>
 #include <chrono>
 #include <optional>
@@ -52,9 +54,11 @@ public:
     std::chrono::steady_clock::duration startTimeout;
     std::chrono::steady_clock::duration stopTimeout;
     std::optional<Heartbeat> heartbeat;
+    std::optional<std::chrono::steady_clock::duration> watchdogTimeout;
 
     std::vector<std::string> argv;
     std::vector<std::string> env;
+    std::optional<UidAndGid> uidAndGid;
     std::vector<std::string> startAfter;
 
     bool operator==(const ProcessService& service) const;
