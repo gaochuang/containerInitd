@@ -16,7 +16,7 @@ bool ProcessService::Heartbeat::operator!=(const Heartbeat& other) const
 
 bool ProcessService::operator==(const ProcessService& service) const
 {
-    return ((name == service.name) && (type == service.type) && (action == service.action) &&
+    return ((name == service.name) && (outputPrefix == service.outputPrefix) && (type == service.type) && (action == service.action) &&
             (standardOut == service.standardOut) && (standardErr == service.standardOut) && 
             (startTimeout == service.startTimeout) && (stopTimeout == service.stopTimeout) &&
             (argv == service.argv) && (env == service.env) && (startAfter == service.startAfter)

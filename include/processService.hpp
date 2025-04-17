@@ -47,6 +47,7 @@ public:
     ~ProcessService() = default;
 
     std::string name;
+    std::string outputPrefix;
     Type type;
     FailureAction action;
     LoggerOut standardOut;
